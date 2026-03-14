@@ -1,7 +1,9 @@
 streamlit
 streamlit-folium
+geopandas
 folium
 pandas
+scipy
 numpy
 plotly
 # 添加你项目中使用的其他包
