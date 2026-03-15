@@ -5,6 +5,7 @@
 # - 在覆蓋率已高的私宅區域也會適當放置氣動點（全域私宅 K=500 聚類）
 # - 高級回收站圖例改為藍色星星，並整合到氣動規劃顯示控制區
 # - 圖例與說明同步更新
+# - 中英文切換時強制全英文或全中文（不再混排）
 # 作者：THZH Program - Zhou Ziyue（後續修改整合）
 # 運行指令: streamlit run panel.py
 
@@ -33,6 +34,8 @@ st.set_page_config(
 # ====================== 語言切換 / Language Switch ======================
 with st.sidebar:
     lang = st.selectbox("語言 / Language", ["中文 / Chinese", "English"], index=0)
+
+is_english = (lang == "English")
 
 # ====================== 文字字典 / Text Dictionary ======================
 texts = {
@@ -119,6 +122,7 @@ texts = {
         "legend_premium": "Legend: Blue Stars = Premium Recycling Stations"
     }
 }
+
 t = texts[lang]
 
 # ====================== 禁用滑鼠滾輪影響 / Disable Mouse Wheel Impact ======================
@@ -206,7 +210,7 @@ def load_recycling_points():
         df['district'] = df['district'].apply(normalize_district_name)
         return df
     except Exception as e:
-        st.error(f"回收點 CSV 加載失敗 / Recycling Points CSV Load Failed: {e}")
+        st.error(f"回收點 CSV 加載失敗 / Recycling Points CSV Load Failed: {e}" if not is_english else f"Failed to load Recycling Points CSV: {e}")
         return pd.DataFrame()
 
 @st.cache_data
@@ -240,7 +244,7 @@ def load_public_housing():
 def load_private_buildings():
     path = "PrivateBuildings.csv"
     if not os.path.exists(path): 
-        st.error(f"私宅文件不存在 / Private Buildings file not found: {path}")
+        st.error(f"私宅文件不存在 / Private Buildings file not found: {path}" if not is_english else f"Private Buildings file not found: {path}")
         return pd.DataFrame()
     try:
         df = pd.read_csv(path, usecols=['LATITUDE', 'LONGITUDE', 'SEARCH1_E'], 
@@ -255,7 +259,7 @@ def load_private_buildings():
         df['weight'] = 50
         return df[['latitude', 'longitude', 'district', 'type', 'weight']]
     except Exception as e:
-        st.error(f"私宅載入失敗 / Private buildings load failed: {str(e)}")
+        st.error(f"私宅載入失敗 / Private buildings load failed: {str(e)}" if not is_english else f"Private buildings load failed: {str(e)}")
         return pd.DataFrame()
 
 # ====================== 覆蓋率計算 / Coverage Calculation ======================
@@ -412,9 +416,9 @@ def create_map(show_public, show_heat, filtered_recycle, filtered_public, filter
     if not filtered_recycle.empty:
         locations = filtered_recycle[['latitude', 'longitude']].values.tolist()
         popups = [
-            f"{row.get('address_tc', '回收點 / Recycle Point')}<br>"
-            f"類型 / Type: {row['type']}<br>"
-            f"垃圾種類 / Waste: {row.get('waste_types', 'Unknown')}"
+            f"{row.get('address_tc', '回收點 / Recycle Point') if not is_english else row.get('address_en', 'Recycle Point')}<br>"
+            f"Type: {row['type']}<br>"
+            f"Waste: {row.get('waste_types', 'Unknown')}"
             for _, row in filtered_recycle.iterrows()
         ]
         FastMarkerCluster(locations, popups=popups).add_to(m)
@@ -425,7 +429,7 @@ def create_map(show_public, show_heat, filtered_recycle, filtered_public, filter
         for _, row in premium_df.iterrows():
             folium.Marker(
                 [row['latitude'], row['longitude']],
-                popup=f"高級站 / Premium Station<br>{row.get('address_tc', 'N/A')}",
+                popup=f"Premium Station<br>{row.get('address_tc', 'N/A') if not is_english else row.get('address_en', 'N/A')}",
                 icon=folium.Icon(color='blue', icon='star')
             ).add_to(m)
     
@@ -433,7 +437,7 @@ def create_map(show_public, show_heat, filtered_recycle, filtered_public, filter
         for _, row in filtered_public.iterrows():
             folium.Marker(
                 [row['latitude'], row['longitude']],
-                popup=f"{row['estate_name']}<br>單位 / Units: {row.get('flats', 0):,}",
+                popup=f"{row['estate_name']}<br>Units: {row.get('flats', 0):,}",
                 icon=folium.Icon(color='red', icon='home')
             ).add_to(m)
     
@@ -447,7 +451,7 @@ def create_map(show_public, show_heat, filtered_recycle, filtered_public, filter
         for _, site in new_sites.iterrows():
             folium.Marker(
                 [site['latitude'], site['longitude']],
-                popup=f"新回收站 / New Recycle Station",
+                popup="New Recycle Station",
                 icon=folium.Icon(color='green', icon='star')
             ).add_to(m)
     
@@ -457,7 +461,7 @@ def create_map(show_public, show_heat, filtered_recycle, filtered_public, filter
             folium.CircleMarker(
                 [point['latitude'], point['longitude']],
                 radius=5, color='green', fill=False,
-                popup="氣動點 / Pneumatic Point"
+                popup="Pneumatic Point"
             ).add_to(m)
             if 'nearest_premium_lat' in point and not pd.isna(point['nearest_premium_lat']):
                 folium.PolyLine(
@@ -484,12 +488,12 @@ def main():
     with st.expander(t["filters"], expanded=True):
         col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
-            selected_district = st.selectbox(t["district"], ['全部 / All'] + sorted(df_recycle['district'].unique().tolist()))
+            selected_district = st.selectbox(t["district"], ['全部 / All'] + sorted(df_recycle['district'].unique().tolist()) if not is_english else ['All'] + sorted(df_recycle['district'].unique().tolist()))
         with col2:
-            waste_options = ['全部 / All'] + sorted(set(t.strip() for types in df_recycle['waste_types'] if pd.notna(types) for t in str(types).split(',')))
+            waste_options = ['全部 / All'] + sorted(set(t.strip() for types in df_recycle['waste_types'] if pd.notna(types) for t in str(types).split(','))) if not is_english else ['All'] + sorted(set(t.strip() for types in df_recycle['waste_types'] if pd.notna(types) for t in str(types).split(',')))
             selected_waste = st.selectbox(t["waste_type"], waste_options)
         with col3:
-            selected_type = st.selectbox(t["station_type"], ['全部 / All'] + sorted(df_recycle['type'].unique().tolist()))
+            selected_type = st.selectbox(t["station_type"], ['全部 / All'] + sorted(df_recycle['type'].unique().tolist()) if not is_english else ['All'] + sorted(df_recycle['type'].unique().tolist()))
         with col4:
             premium_only = st.checkbox(t["premium_only"], False)
         with col5:
@@ -497,17 +501,17 @@ def main():
             distance_km = distance_m / 1000.0
     
     filtered_recycle = df_recycle.copy()
-    if selected_district != '全部 / All':
+    if selected_district != ('全部 / All' if not is_english else 'All'):
         filtered_recycle = filtered_recycle[filtered_recycle['district'] == selected_district]
-    if selected_waste != '全部 / All':
+    if selected_waste != ('全部 / All' if not is_english else 'All'):
         filtered_recycle = filtered_recycle[filtered_recycle['waste_types'].str.contains(selected_waste, na=False, case=False)]
-    if selected_type != '全部 / All':
+    if selected_type != ('全部 / All' if not is_english else 'All'):
         filtered_recycle = filtered_recycle[filtered_recycle['type'] == selected_type]
     if premium_only:
         filtered_recycle = filtered_recycle[filtered_recycle['is_premium']]
     
-    filtered_public = df_public[df_public['district'] == selected_district] if selected_district != '全部 / All' else df_public
-    filtered_private = df_private[df_private['district'] == selected_district] if selected_district != '全部 / All' else df_private
+    filtered_public = df_public[df_public['district'] == selected_district] if selected_district != ('全部 / All' if not is_english else 'All') else df_public
+    filtered_private = df_private[df_private['district'] == selected_district] if selected_district != ('全部 / All' if not is_english else 'All') else df_private
     
     cov_pub = calculate_district_coverage(filtered_recycle, filtered_public, distance_km)
     cov_priv = calculate_private_coverage(filtered_recycle, filtered_private, distance_km)
@@ -541,22 +545,22 @@ def main():
             private_coverages.append(priv_cov)
         
         trend_df = pd.DataFrame({
-            "距離 (米) / Distance (m)": distance_points,
-            "公屋覆蓋率 (%) / Public Estates (%)": public_coverages,
-            "私樓覆蓋率 (%) / Private Buildings (%)": private_coverages
+            "距離 (米) / Distance (m)" if not is_english else "Distance (m)": distance_points,
+            "公屋覆蓋率 (%) / Public Estates (%)" if not is_english else "Public Estates Coverage (%)": public_coverages,
+            "私樓覆蓋率 (%) / Private Buildings (%)" if not is_english else "Private Buildings Coverage (%)": private_coverages
         })
         
         st.line_chart(
-            trend_df.set_index("距離 (米) / Distance (m)"),
+            trend_df.set_index("距離 (米) / Distance (m)" if not is_english else "Distance (m)"),
             use_container_width=True,
             height=400
         )
         
         current_pub = cov_pub['coverage_rate'] * 100
         current_priv = cov_priv['coverage_rate'] * 100
-        st.caption(f"目前 {distance_m} 米：公屋 {current_pub:.1f}% / 私樓 {current_priv:.1f}% / Current {distance_m} m: Public {current_pub:.1f}% / Private {current_priv:.1f}%")
+        st.caption(f"目前 {distance_m} 米：公屋 {current_pub:.1f}% / 私樓 {current_priv:.1f}% / Current {distance_m} m: Public {current_pub:.1f}% / Private {current_priv:.1f}%" if not is_english else f"Current at {distance_m} m: Public {current_pub:.1f}% / Private {current_priv:.1f}%")
     else:
-        st.info("無足夠資料繪製距離-覆蓋率趨勢圖 / Not enough data to plot distance-coverage trend.")
+        st.info("無足夠資料繪製距離-覆蓋率趨勢圖 / Not enough data to plot distance-coverage trend." if not is_english else "Not enough data to plot distance-coverage trend.")
 
     st.subheader(t["common_waste"])
     waste_series = filtered_recycle['waste_types']
@@ -564,7 +568,7 @@ def main():
         prop = waste_series.value_counts(normalize=True).head(8) * 100
         st.bar_chart(prop, use_container_width=True)
         for wtype, pct in prop.items():
-            st.write(f"• **{wtype}**：{pct:.1f}% / **{wtype}**: {pct:.1f}%")
+            st.write(f"• **{wtype}**：{pct:.1f}% / **{wtype}**: {pct:.1f}%" if not is_english else f"• **{wtype}**: {pct:.1f}%")
     else:
         st.write(t["no_data"])
     
@@ -573,15 +577,17 @@ def main():
     with st.expander(t["new_sites_title"], expanded=False):
         st.markdown("""
         **原理解释 / Principle**：基於 K-means 聚類，針對私宅未覆蓋區生成建議位置，固定為高質量 Recycle Station。
+        """ if not is_english else """
+        **Principle**: Uses K-means clustering on uncovered private buildings to propose optimal new high-quality Recycle Station locations.
         """)
         uncovered_private = get_uncovered_buildings(filtered_recycle, filtered_private, 0.3)
         if not uncovered_private.empty:
             new_k = st.slider(t["new_sites_k"], min_value=0, max_value=50, value=3, step=1)
             new_sites, new_improvement, new_efficiency, new_total_cov = propose_new_sites(uncovered_private, new_k, cov_priv['coverage_rate'])
-            st.metric(t["new_sites_impact"], f"原有 {cov_priv['coverage_rate']*100:.1f}% → 新 {new_total_cov:.1f}% (提升 {new_improvement:.1f}%)")
+            st.metric(t["new_sites_impact"], f"原有 {cov_priv['coverage_rate']*100:.1f}% → 新 {new_total_cov:.1f}% (提升 {new_improvement:.1f}%)" if not is_english else f"From {cov_priv['coverage_rate']*100:.1f}% → {new_total_cov:.1f}% (Improvement: {new_improvement:.1f}%)")
             st.dataframe(new_sites)
         else:
-            st.info("私宅無間隙區域 / No private gaps found.")
+            st.info("私宅無間隙區域 / No private gaps found." if not is_english else "No uncovered private building clusters found.")
     
     # ====================== 氣動系統規劃（全私宅 500 點） ======================
     with st.expander(t["pneumatic_title"], expanded=False):
@@ -594,8 +600,16 @@ def main():
         - 去重 = 合併 <200m 中心
         - 覆蓋評估半徑 = 1km（較寬鬆）
         - 提升 = (新覆蓋率 - 原有私宅覆蓋率) × 100%
+        """ if not is_english else """
+        **Principle**: Performs K=500 clustering on **all private buildings in Hong Kong** to generate 500 pneumatic collection points (not limited to uncovered areas). Each point connects to the nearest premium station.
+
+        **Key Formula**:
+        - Cluster centers = K-means (K=500) minimizing sum of squared distances
+        - Deduplication = merge centers < 200m apart
+        - Coverage evaluation radius = 1 km (lenient)
+        - Improvement = (New Coverage Rate - Original Private Coverage) × 100%
         """)
-        st.caption(t["pneumatic_k"])  # 顯示固定 500 點
+        st.caption(t["pneumatic_k"])
         
         # 使用全部私宅（不限未覆蓋）
         all_private = filtered_private.copy()
@@ -606,12 +620,13 @@ def main():
                 all_private, premium_stations, cov_priv['coverage_rate']
             )
             st.metric(t["pneumatic_impact"], 
-                      f"原有 {cov_priv['coverage_rate']*100:.1f}% → 新 {pneumatic_total_cov:.1f}% (提升約 {pneumatic_improvement:+.1f}%)")
-            st.caption(f"效率約：{pneumatic_efficiency:.3f}% 覆蓋 / 每點")
-            st.dataframe(pneumatic_points[['latitude', 'longitude']].head(10))  # 只顯示前10個避免過長
-            st.caption("（完整 500 點已繪製於地圖，表格僅展示前10筆）")
+                      f"原有 {cov_priv['coverage_rate']*100:.1f}% → 新 {pneumatic_total_cov:.1f}% (提升約 {pneumatic_improvement:+.1f}%)" if not is_english else 
+                      f"From {cov_priv['coverage_rate']*100:.1f}% → {pneumatic_total_cov:.1f}% (Improvement: {pneumatic_improvement:+.1f}%)")
+            st.caption(f"效率約：{pneumatic_efficiency:.3f}% 覆蓋 / 每點" if not is_english else f"Approx. efficiency: {pneumatic_efficiency:.3f}% coverage gain per point")
+            st.dataframe(pneumatic_points[['latitude', 'longitude']].head(10))
+            st.caption("（完整 500 點已繪製於地圖，表格僅展示前10筆）" if not is_english else "(All 500 points are plotted on map; table shows first 10 only)")
         else:
-            st.info("無私宅資料或無高級站 / No private buildings or premium stations.")
+            st.info("無私宅資料或無高級站 / No private buildings or premium stations." if not is_english else "No private buildings data or no premium stations available.")
     
     st.subheader(t["map_title"])
     
@@ -638,7 +653,7 @@ def main():
     st.markdown("---")
 
     # ====================== 新增：研究方法、公式與原理（中英雙語） ======================
-    with st.expander("研究方法、评价函数与公式 / Research Methods, Evaluation Functions & Formulas", expanded=False):
+    with st.expander("研究方法、评价函数与公式 / Research Methods, Evaluation Functions & Formulas" if not is_english else "Research Methods, Evaluation Functions & Formulas", expanded=False):
         st.markdown("""
         ### 核心研究方法 / Core Research Methods
 
@@ -687,10 +702,53 @@ def main():
         - **第一哩問題 (First-mile Problem)**：私宅居民投放不便 → 透過新增站點 + 氣動系統縮短距離，提升參與意願。
         - **全域優化而非局部填補**：氣動點對全私宅進行 K=500 聚類，兼顧高密度區補強與低覆蓋區填補。
         - **數據驅動決策**：所有建議位置均基於真實建築坐標與現有設施，確保科學性與可操作性。
+        """ if not is_english else """
+        ### Core Research Methods
+
+        1. **Spatial Coverage Analysis**  
+           Uses Euclidean distance (spherical approximation) to determine if a building is within coverage range of a recycling point.
+
+        2. **K-means Clustering**  
+           Applied to propose new station locations and pneumatic point planning.
+
+        3. **Nearest Neighbor Matching & Deduplication**  
+           Pneumatic points connect to nearest premium station; cluster centers < 200m are merged.
+
+        4. **Heatmap & Density Estimation**  
+           Visualizes private building density distribution.
+
+        ### Key Evaluation Functions & Formulas
+
+        **Coverage Rate**  
+        $$
+        \\text{Coverage Rate} = \\frac{\\text{Number of buildings with } d_{\\min} \\leq r}{\\text{Total number of buildings}} \\times 100\\%
+        $$
+
+        **Coverage Improvement**  
+        $$
+        \\Delta \\text{Coverage} = (\\text{New Coverage Rate} - \\text{Original Coverage Rate}) \\times 100\\%
+        $$
+
+        **Efficiency per Point**  
+        $$
+        \\text{Efficiency} = \\frac{\\Delta \\text{Coverage}}{\\text{Number of new points}}
+        $$
+
+        **Pneumatic Coverage Evaluation**  
+        Uses a lenient 1 km radius to simulate larger service range of pneumatic system.
+
+        **Nearest Premium Ratio**  
+        Proportion of covered buildings whose nearest station is a premium one.
+
+        ### Summary of Principles
+
+        - Addresses first-mile problem for private estates.
+        - Global optimization instead of local gap-filling.
+        - All proposals are data-driven using real building coordinates and existing facilities.
         """)
 
     # ====================== 数据来源（基于官方及 CUHK Data Hack 2026） ======================
-    st.markdown("### 数据来源 / Data Sources")
+    st.markdown("### 数据来源 / Data Sources" if not is_english else "### Data Sources")
     st.markdown("""
     - **Recyclable Collection Points Data**  
       香港各區回收收集點基礎設施數據  
@@ -724,6 +782,33 @@ def main():
 
     **數據存取日期 / Data Access Date**: March 2026  
     **免責聲明 / Disclaimer**: 所有數據來自香港政府公開數據平台，僅用於 CUHK Data Hack 2026 比賽（Green Loop Challenge），非商業用途。
+    """ if not is_english else """
+    - **Recyclable Collection Points Data**  
+      Source: Environmental Protection Department (EPD), Hong Kong  
+      Link: https://data.gov.hk/en-data/dataset/hk-epd-recycteam-waste-less-recyclable-collection-points-data
+
+    - **Location and Profile of Public Housing Estates**  
+      Source: Hong Kong Housing Authority (via data.gov.hk)  
+      Link: https://www.housingauthority.gov.hk/datagovhk/prh-estates.json
+
+    - **Database of Private Buildings in Hong Kong**  
+      Source: Home Affairs Department / data.gov.hk  
+      Link: https://data.gov.hk/en-data/dataset/hk-had-json1-db-of-private-buildings-in-hong-kong
+
+    - **Open Space Database of Recycling Station**  
+      Source: Environmental Protection Department (EPD)  
+      Link: https://data.gov.hk/en-data/dataset/hk-epd-wrrteam-recycling-station
+
+    - **Additional References**  
+      - 2021 Population Census  
+      - EPD Annual Reports & historical recovery trends
+
+    **Primary Data Portal**  
+    Hong Kong Government Open Data Portal: https://data.gov.hk  
+    CUHK Data Hack 2026: https://libguides.lib.cuhk.edu.hk/datahack/2026-data
+
+    **Data Access Date**: March 2026  
+    **Disclaimer**: All data from Hong Kong government open data portal, used solely for CUHK Data Hack 2026 (Green Loop Challenge), non-commercial purpose.
     """)
 
 if __name__ == '__main__':
