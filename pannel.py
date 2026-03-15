@@ -5,7 +5,7 @@
 # - 在覆蓋率已高的私宅區域也會適當放置氣動點（全域私宅 K=500 聚類）
 # - 高級回收站圖例改為藍色星星，並整合到氣動規劃顯示控制區
 # - 圖例與說明同步更新
-# 作者：THZH Program - Zhou Ziyue
+# 作者：THZH Program - Zhou Ziyue（後續修改整合）
 # 運行指令: streamlit run panel.py
 
 import streamlit as st
@@ -259,6 +259,7 @@ def load_private_buildings():
         return pd.DataFrame()
 
 # ====================== 覆蓋率計算 / Coverage Calculation ======================
+@st.cache_data
 def calculate_district_coverage(recycle_df, estate_df, distance_km=0.5):
     if recycle_df.empty or estate_df.empty:
         return {'coverage_rate': 0.0, 'covered': 0, 'total': 0}
@@ -273,6 +274,7 @@ def calculate_district_coverage(recycle_df, estate_df, distance_km=0.5):
         'total': len(estate_df)
     }
 
+@st.cache_data
 def calculate_private_coverage(recycle_df, private_df, distance_km=0.5):
     if recycle_df.empty or private_df.empty:
         return {'coverage_rate': 0.0, 'covered': 0, 'total': 0, 'nearest_premium_ratio': 0.0}
@@ -295,6 +297,7 @@ def calculate_private_coverage(recycle_df, private_df, distance_km=0.5):
     }
 
 # ====================== 識別未覆蓋建築物 / Identify Uncovered Buildings ======================
+@st.cache_data
 def get_uncovered_buildings(recycle_df, buildings_df, distance_km=0.3):
     if recycle_df.empty or buildings_df.empty:
         return pd.DataFrame()
@@ -306,6 +309,7 @@ def get_uncovered_buildings(recycle_df, buildings_df, distance_km=0.3):
     return buildings_df[uncovered_mask]
 
 # ====================== 計算密度（添加空檢查和默認值） ======================
+@st.cache_data
 def calculate_density(df, radius_km=0.2):
     if df.empty:
         df['density'] = 0
@@ -317,6 +321,7 @@ def calculate_density(df, radius_km=0.2):
     return df
 
 # ====================== 聚類並去重 ======================
+@st.cache_data
 def cluster_and_dedup(df, k):
     if df.empty or k == 0:
         return pd.DataFrame(columns=['latitude', 'longitude'])
@@ -347,6 +352,7 @@ def cluster_and_dedup(df, k):
     return pd.DataFrame(dedup_centers, columns=['latitude', 'longitude'])
 
 # ====================== 新增回收站建議（保持原邏輯） ======================
+@st.cache_data
 def propose_new_sites(uncovered_private, k=3, original_priv_cov=0.0):
     if uncovered_private.empty or k == 0:
         return pd.DataFrame(), 0.0, 0.0, 0.0
@@ -362,6 +368,7 @@ def propose_new_sites(uncovered_private, k=3, original_priv_cov=0.0):
     return centers, improvement, efficiency, new_total_cov
 
 # ====================== 氣動系統規劃（改為全私宅 500 點） ======================
+@st.cache_data
 def plan_pneumatic_system(all_private_df, premium_df, original_priv_cov=0.0):
     if all_private_df.empty:
         return pd.DataFrame(), 0.0, 0.0, 0.0
@@ -629,6 +636,95 @@ def main():
     folium_static(m, width=1200, height=650)
     
     st.markdown("---")
+
+    # ====================== 新增：研究方法、公式與原理（中英雙語） ======================
+    with st.expander("研究方法、评价函数与公式 / Research Methods, Evaluation Functions & Formulas", expanded=False):
+        st.markdown("""
+        ### 核心研究方法 / Core Research Methods
+
+        1. **空間覆蓋分析 (Spatial Coverage Analysis)**  
+           使用歐幾里得距離（球面近似）判斷建築是否在回收站覆蓋範圍內。  
+           *Principle*: 計算每個建築到最近回收站的距離，若 ≤ 覆蓋半徑則視為已覆蓋。
+
+        2. **K-means 聚類 (K-means Clustering)**  
+           用於建議新增回收站位置及氣動系統投放點規劃。  
+           *Principle*: 最小化各點到其所屬聚類中心的平方距離總和，實現空間最優分組。
+
+        3. **最近鄰匹配與去重 (Nearest Neighbor Matching & Deduplication)**  
+           氣動點連接到最近高級站；聚類中心 < 200m 合併。  
+           *Principle*: 避免過度密集佈點，提升系統實際可行性。
+
+        4. **熱力圖與密度估計 (Heatmap & Density Estimation)**  
+           展示私樓分佈密度（Kernel Density Estimation 近似）。  
+           *Principle*: 視覺化高密度區域，輔助識別服務缺口。
+
+        ### 主要評價函數與公式 / Key Evaluation Functions & Formulas
+
+        **覆蓋率 (Coverage Rate)**  
+        $$
+        \\text{Coverage Rate} = \\frac{\\text{Number of buildings with } d_{\\min} \\leq r}{\\text{Total number of buildings}} \\times 100\\%
+        $$  
+        其中 \( d_{\\min} \) 為建築到最近回收站的距離（km），\( r \) 為覆蓋半徑（預設 0.5 km）。
+
+        **覆蓋提升 (Coverage Improvement)**  
+        $$
+        \\Delta \\text{Coverage} = (\\text{New Coverage Rate} - \\text{Original Coverage Rate}) \\times 100\\%
+        $$
+
+        **每點效率 (Efficiency per Point)**  
+        $$
+        \\text{Efficiency} = \\frac{\\Delta \\text{Coverage}}{\\text{Number of new points}}
+        $$
+
+        **氣動系統覆蓋評估**  
+        使用較寬鬆半徑 1 km 計算覆蓋率（模擬氣動系統更大服務範圍）。
+
+        **最近優質站比例 (Nearest Premium Ratio)**  
+        在已覆蓋建築中，最近站點為優質站（GREEN@COMMUNITY / Recycling Station）的比例。
+
+        ### 原理總結 / Summary of Principles
+
+        - **第一哩問題 (First-mile Problem)**：私宅居民投放不便 → 透過新增站點 + 氣動系統縮短距離，提升參與意願。
+        - **全域優化而非局部填補**：氣動點對全私宅進行 K=500 聚類，兼顧高密度區補強與低覆蓋區填補。
+        - **數據驅動決策**：所有建議位置均基於真實建築坐標與現有設施，確保科學性與可操作性。
+        """)
+
+    # ====================== 数据来源（基于官方及 CUHK Data Hack 2026） ======================
+    st.markdown("### 数据来源 / Data Sources")
+    st.markdown("""
+    - **Recyclable Collection Points Data**  
+      香港各區回收收集點基礎設施數據  
+      Source: Environmental Protection Department (EPD), Hong Kong  
+      Link: https://data.gov.hk/en-data/dataset/hk-epd-recycteam-waste-less-recyclable-collection-points-data
+
+    - **Location and Profile of Public Housing Estates**  
+      公屋位置、概況及單位數量  
+      Source: Hong Kong Housing Authority (via data.gov.hk)  
+      Link: https://www.housingauthority.gov.hk/datagovhk/prh-estates.json
+
+    - **Database of Private Buildings in Hong Kong**  
+      香港私樓綜合數據庫（含坐標，用於私宅覆蓋分析）  
+      Source: Home Affairs Department / data.gov.hk  
+      Link: https://data.gov.hk/en-data/dataset/hk-had-json1-db-of-private-buildings-in-hong-kong
+
+    - **Open Space Database of Recycling Station**  
+      GREEN@COMMUNITY 回收站空間數據  
+      Source: Environmental Protection Department (EPD)  
+      Link: https://data.gov.hk/en-data/dataset/hk-epd-wrrteam-recycling-station
+
+    - **Additional References**  
+      - 2021 Population Census (人口普查 - 用於密度與分區分析)  
+        Source: Census and Statistics Department  
+      - Waste Management Facilities & Historical Recovery Trends  
+        Source: EPD Annual Reports & data.gov.hk
+
+    **主要數據門戶 / Primary Data Portal**  
+    Hong Kong Government Open Data Portal: https://data.gov.hk  
+    CUHK Data Hack 2026 官方頁面: https://libguides.lib.cuhk.edu.hk/datahack/2026-data
+
+    **數據存取日期 / Data Access Date**: March 2026  
+    **免責聲明 / Disclaimer**: 所有數據來自香港政府公開數據平台，僅用於 CUHK Data Hack 2026 比賽（Green Loop Challenge），非商業用途。
+    """)
 
 if __name__ == '__main__':
     main()
